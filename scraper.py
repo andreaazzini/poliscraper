@@ -4,7 +4,7 @@ import csv
 import shlex
 import subprocess
 
-from utils import flatten
+from utils import cartesian, flatten, is_valid_query, pairwise
 
 
 # Get the hashtags for parties and topics
@@ -14,31 +14,61 @@ party_hashtags = 'parties/republicansHashtagsShort.csv'
 
 with open(party_hashtags) as f:
     party_reader = csv.reader(f)
-    party_list = flatten(list(party_reader))
+    parties = flatten(list(party_reader))
 
 with open(topic_hashtags) as f:
     topic_reader = csv.reader(f)
-    topic_list = flatten(list(topic_reader))
+    topics = flatten(list(topic_reader))
 
 
-# Build the Twitter query
+# Build the topic lists in order to fit them in the queries
 
-query_total = ''
-for party in party_list:
-    for topic in topic_list:
-        query = '((' + party + ' OR #' + party + ') (' + topic + ' OR #' + topic + '))'
-        if not query_total:
-            query_total = query
-        else:
-            query_total = query_total + ' OR ' + query
+def group_topics(parties, topics):
+    topic_lists = []
+    while topics:
+        topic_list = []
+        for t in topics:
+            if is_valid_query(parties, topic_list + [t]):
+                topic_list.append(t)
+            else:
+                topic_lists.append(topic_list)
+                topics = list(set(topics) - set(topic_list))
+                print topics
+                break
+        if topic_list == topics:
+            topic_lists.append(topic_list)
+            break
+    return topic_lists
 
 
-# Launch the scraping process
+# Build the Twitter queries
 
-db_name = 'trump'
-scraper_command = 'twitter-scraper-cli -q ' + '"' + query_total + '" -T twitterconfig.json -d ' + db_name
-args = shlex.split(scraper_command)
+names = []
+queries = []
+for p1, p2 in pairwise(parties):
+    party_list = [p1, p2]
+    topic_lists = group_topics(party_list, topics)
+    for topic_list in topic_lists:
+        query_total = ''
+        couples = cartesian([party_list, topic_list])
+        for party, topic in couples:
+            query = '((' + party + ' OR #' + party + ') (' + topic + ' OR #' + topic + '))'
+            if not query_total:
+                query_total = query
+            else:
+                query_total = query_total + ' OR ' + query
+        names.append('#'.join(party_list + topic_list))
+        queries.append(query_total)
 
-print 'Launching scraping process for query ' + query_total
-subprocess.Popen(args)
+# Launch the scraping processes
+
+db_name = 'trump' # TODO pass as param of the script
+for i, query in enumerate(queries):
+    scraper_command = 'twitter-scraper-cli -q ' + '"' + query + '" -T twitterconfig.json -d ' + db_name + ' -c ' + names[i]
+    args = shlex.split(scraper_command)
+    if len(query) <= 500:
+        print 'Launching scraping process for query ' + query
+        subprocess.Popen(args)
+    else:
+        print 'WARNING: the query ' + query +' is too long!'
 print 'Done!'
