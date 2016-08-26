@@ -1,16 +1,24 @@
 #!/usr/bin/env python
 
 import csv
-import shlex
 import subprocess
+import sys
 
 from utils import cartesian, flatten, is_valid_query, pairwise
 
 
 # Get the hashtags for parties and topics
 
-topic_hashtags = 'topics/economyShort.csv'
-party_hashtags = 'parties/republicansHashtagsShort.csv'
+try:
+    database_name = sys.argv[1]
+    collection_name = sys.argv[2]
+except:
+    print "You need to specify both a database_name and a collection_name"
+    print "Usage: scraper.py database_name collection_name"
+    sys.exit()
+
+party_hashtags = 'parties/' + database_name + '.csv'
+topic_hashtags = 'topics/' + collection_name + '.csv'
 
 with open(party_hashtags) as f:
     party_reader = csv.reader(f)
@@ -33,7 +41,7 @@ def group_topics(parties, topics):
             else:
                 topic_lists.append(topic_list)
                 topics = list(set(topics) - set(topic_list))
-                print topics
+                # print topics
                 break
         if topic_list == topics:
             topic_lists.append(topic_list)
@@ -42,6 +50,8 @@ def group_topics(parties, topics):
 
 
 # Build the Twitter queries
+
+print "Building and grouping Twitter queries..."
 
 names = []
 queries = []
@@ -60,15 +70,24 @@ for p1, p2 in pairwise(parties):
         names.append('#'.join(party_list + topic_list))
         queries.append(query_total)
 
+
 # Launch the scraping processes
 
-db_name = 'trump' # TODO pass as param of the script
+print "Preparing to launch..."
+
+commands = ''
 for i, query in enumerate(queries):
-    scraper_command = 'twitter-scraper-cli -q ' + '"' + query + '" -T twitterconfig.json -d ' + db_name + ' -c ' + names[i]
-    args = shlex.split(scraper_command)
+    # scraper_command = 'twitter-scraper-cli -q ' + '"' + query + '" -T twitterconfig.json -d ' + db_name + ' -c ' + names[i]
+    scraper_command = 'twitter-scraper-cli -q "' + query + '" -T twitterconfig.json -d ' + database_name + ' -c ' + collection_name + '\n'
     if len(query) <= 500:
-        print 'Launching scraping process for query ' + query
-        subprocess.Popen(args)
+        # print 'Launching scraping process for query ' + query
+        commands += scraper_command
+        # subprocess.Popen(args)
     else:
         print 'WARNING: the query ' + query +' is too long!'
-print 'Done!'
+
+f = open('commands', 'w')
+f.write(commands)
+
+print "Launching..."
+subprocess.call(["./series_scrape.sh"])

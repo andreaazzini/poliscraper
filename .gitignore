@@ -85,5 +85,7 @@ ENV/
 # Spyder project settings
 .spyderproject
 
+commands
+
 # Rope project settings
 .ropeproject
